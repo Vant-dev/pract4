@@ -1,0 +1,242 @@
+-- CREATE DATABASE - создаёт новую базу данных
+CREATE DATABASE ElectronicsShop;
+GO  
+
+-- USE - переключает контекст на указанную БД
+USE ElectronicsShop;
+GO
+
+CREATE TABLE Categories (
+    -- UNIQUEIDENTIFIER - тип данных для GUID
+    -- DEFAULT NEWSEQUENTIALID() - авто-генерация GUID
+    -- PRIMARY KEY - первичный ключ 
+    CategoryId  UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    
+    Name        NVARCHAR(150) NOT NULL,
+    
+    -- VARCHAR(MAX) - строка переменной длины 
+    Description NVARCHAR(500) NULL  -- NULL - поле необязательное
+);
+
+
+-- Brands таблица брендов
+CREATE TABLE Brands (
+    BrandId     UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    Name        NVARCHAR(100) NOT NULL,
+    Country     NVARCHAR(100) NULL
+);
+
+--Products таблица продуктов
+CREATE TABLE Products (
+    ProductId       UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    
+    -- NVARCHAR - строка
+    Name            NVARCHAR(200) NOT NULL,
+    
+    -- VARCHAR - строка ASCII
+    ModelNumber     VARCHAR(50) NOT NULL,
+    
+    -- DECIMAL(p,s) - точное десятичное число
+    Price           DECIMAL(10,2) NOT NULL CHECK (Price >= 0),
+    
+    -- DATE - только дата (без времени)
+    ReleaseDate     DATE NULL,
+    
+    -- DATETIME2 - дата и время
+    CreatedAt       DATETIME2 NOT NULL DEFAULT GETDATE(),
+    
+    IsAvailable     BIT NOT NULL DEFAULT 1,
+    
+    -- GUID - внешний ключ к Categories
+    CategoryId      UNIQUEIDENTIFIER NOT NULL,
+    
+    -- GUID - внешний ключ к Brands
+    BrandId         UNIQUEIDENTIFIER NOT NULL,
+    
+    
+    -- FOREIGN KEY - внешний ключ
+    -- REFERENCES - ссылка на таблицу и столбец
+    CONSTRAINT FK_Products_Categories 
+        FOREIGN KEY (CategoryId) REFERENCES Categories(CategoryId),
+    
+    CONSTRAINT FK_Products_Brands 
+        FOREIGN KEY (BrandId) REFERENCES Brands(BrandId)
+);
+
+--Customers таблица клиентов
+CREATE TABLE Customers (
+    CustomerId      UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    FullName        NVARCHAR(200) NOT NULL,
+    Email           NVARCHAR(256) NOT NULL,
+    Phone           NVARCHAR(20) NULL,
+    
+    -- SMALLDATETIME - дата и время
+    RegistrationDate SMALLDATETIME NOT NULL DEFAULT GETDATE(),
+    
+    -- BIT - boolean
+    IsActive        BIT NOT NULL DEFAULT 1
+);
+
+--Orders таблица заказов 1:N Customers
+CREATE TABLE Orders (
+    OrderId         UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    CustomerId      UNIQUEIDENTIFIER NOT NULL,
+    
+    -- DATETIME2 - полная дата и время
+    OrderDate       DATETIME2 NOT NULL DEFAULT GETDATE(),
+    
+    -- DECIMAL(12,2) - для общей суммы заказа
+    TotalAmount     DECIMAL(12,2) NOT NULL DEFAULT 0,
+    
+    -- BIT - оплачен или нет
+    IsPaid          BIT NOT NULL DEFAULT 0,
+    
+    CONSTRAINT FK_Orders_Customers 
+        FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId)
+);
+
+--OrderItems таблиза заказанных товаров 
+CREATE TABLE OrderItems (
+    OrderItemId     UNIQUEIDENTIFIER DEFAULT NEWSEQUENTIALID() PRIMARY KEY,
+    
+    -- Два внешних ключа = связь M:N
+    OrderId         UNIQUEIDENTIFIER NOT NULL,
+    ProductId       UNIQUEIDENTIFIER NOT NULL,
+    
+    -- INT - целое число
+    Quantity        INT NOT NULL CHECK (Quantity > 0),
+    
+    -- Цена товара на момент заказа
+    UnitPrice       DECIMAL(10,2) NOT NULL,
+    
+    CONSTRAINT FK_OrderItems_Orders 
+        FOREIGN KEY (OrderId) REFERENCES Orders(OrderId) 
+        ON DELETE CASCADE,  -- при удалении заказа удаляются его позиции
+    
+    CONSTRAINT FK_OrderItems_Products 
+        FOREIGN KEY (ProductId) REFERENCES Products(ProductId)
+);
+GO
+
+-- CREATE UNIQUE INDEX - создаёт индекс + гарантирует уникальность значений
+CREATE UNIQUE NONCLUSTERED INDEX UQ_Products_ModelNumber 
+ON Products(ModelNumber);
+-- ModelNumber - это артикул производителя, он должен быть уникальным
+-- Минусы: замедление INSERT/UPDATE, дополнительное место на диске
+GO
+
+
+--Вставка данных в таблицы
+INSERT INTO Categories (Name, Description) VALUES 
+(N'Смартфоны', N'Мобильные телефоны и аксессуары'),
+(N'Ноутбуки', N'Портативные компьютеры'),
+(N'Телевизоры', N'LED, OLED, QLED телевизоры'),
+(N'Аудиотехника', N'Наушники, колонки, плееры');
+
+INSERT INTO Brands (Name, Country) VALUES 
+(N'Samsung', N'Южная Корея'),
+(N'Apple', N'США'),
+(N'Xiaomi', N'Китай'),
+(N'LG', N'Южная Корея');
+
+INSERT INTO Products (Name, ModelNumber, Price, ReleaseDate, CategoryId, BrandId) VALUES
+(N'Galaxy S24', 'SM-S921', 89990.00, '2024-01-17', 
+    (SELECT CategoryId FROM Categories WHERE Name = N'Смартфоны'),
+    (SELECT BrandId FROM Brands WHERE Name = N'Samsung')),
+(N'iPhone 15', 'A2846', 99990.00, '2023-09-22',
+    (SELECT CategoryId FROM Categories WHERE Name = N'Смартфоны'),
+    (SELECT BrandId FROM Brands WHERE Name = N'Apple')),
+(N'MacBook Pro 14', 'MKGP3', 189990.00, '2023-10-30',
+    (SELECT CategoryId FROM Categories WHERE Name = N'Ноутбуки'),
+    (SELECT BrandId FROM Brands WHERE Name = N'Apple')),
+(N'Redmi Note 13', '2312DRA50G', 24990.00, '2024-01-15',
+    (SELECT CategoryId FROM Categories WHERE Name = N'Смартфоны'),
+    (SELECT BrandId FROM Brands WHERE Name = N'Xiaomi'));
+
+INSERT INTO Customers (FullName, Email, Phone) VALUES 
+(N'Иван Петров', 'ivan@example.com', '+79161234567'),
+(N'Мария Смирнова', 'maria@example.com', '+79262345678');
+
+INSERT INTO Orders (CustomerId, TotalAmount, IsPaid) VALUES
+((SELECT CustomerId FROM Customers WHERE Email = 'ivan@example.com'), 189990.00, 1),
+((SELECT CustomerId FROM Customers WHERE Email = 'maria@example.com'), 99990.00, 0);
+
+INSERT INTO OrderItems (OrderId, ProductId, Quantity, UnitPrice)
+SELECT 
+    o.OrderId,
+    p.ProductId,
+    1,
+    p.Price
+FROM Orders o, Products p
+WHERE o.TotalAmount = 189990.00 AND p.ModelNumber = 'MKGP3'
+UNION ALL
+SELECT 
+    o.OrderId,
+    p.ProductId,
+    1,
+    p.Price
+FROM Orders o, Products p
+WHERE o.TotalAmount = 99990.00 AND p.ModelNumber = 'A2846';
+GO
+
+-- WHERE - условие фильтрации (до группировки)
+-- AND/OR/NOT - логические операторы
+-- LIKE - поиск по шаблону (% - любые символы)
+-- ORDER BY ASC - по возрастанию, DESC - по убыванию
+SELECT Name, Price, ReleaseDate
+FROM Products
+WHERE Price > 30000 AND IsAvailable = 1
+ORDER BY Price DESC;
+
+
+-- UPDATE table SET column = value 
+UPDATE Products
+SET Price = 92990.00, IsAvailable = 0
+WHERE ModelNumber = 'SM-S921';
+
+
+-- COUNT(), SUM(), AVG(), MIN(), MAX() - агрегатные функции
+-- HAVING - фильтрация ПОСЛЕ группировки (аналог WHERE для групп)
+SELECT 
+    c.Name AS Category,
+    COUNT(p.ProductId) AS ProductCount,
+    AVG(p.Price) AS AvgPrice
+FROM Categories c
+LEFT JOIN Products p ON c.CategoryId = p.CategoryId
+GROUP BY c.Name
+HAVING COUNT(p.ProductId) > 0
+ORDER BY AvgPrice DESC;
+
+-- LEFT JOIN возвращает ВСЕ строки из левой таблицы + совпадения из правой
+-- Если совпадений нет - NULL в полях правой таблицы
+SELECT 
+    c.FullName,
+    o.OrderId,
+    o.OrderDate,
+    o.TotalAmount
+FROM Customers c
+LEFT JOIN Orders o ON c.CustomerId = o.CustomerId
+ORDER BY c.FullName;
+
+-- RIGHT JOIN - ВСЕ строки из правой таблицы + совпадения из левой
+SELECT 
+    p.Name AS Product,
+    oi.Quantity,
+    o.OrderDate
+FROM OrderItems oi
+RIGHT JOIN Products p ON oi.ProductId = p.ProductId
+LEFT JOIN Orders o ON oi.OrderId = o.OrderId
+ORDER BY p.Name;
+
+-- INNER JOIN - только строки с совпадениями в обеих таблицах
+SELECT 
+    c.FullName AS Customer,
+    p.Name AS Product,
+    oi.Quantity,
+    o.OrderDate
+FROM Customers c
+INNER JOIN Orders o ON c.CustomerId = o.CustomerId
+INNER JOIN OrderItems oi ON o.OrderId = oi.OrderId
+INNER JOIN Products p ON oi.ProductId = p.ProductId
+ORDER BY o.OrderDate DESC;
+
